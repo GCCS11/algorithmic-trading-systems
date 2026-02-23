@@ -5,25 +5,25 @@ import pandas as pd
 def generate_signals(df, rsi_ob=60, rsi_os=40, macd_thresh=0):
     df = df.copy()
 
-    # EMA crossover as primary signal
-    ema_cross_up   = (df['ema20'] > df['ema50']) & (df['ema20'].shift(1) <= df['ema50'].shift(1))
-    ema_cross_down = (df['ema20'] < df['ema50']) & (df['ema20'].shift(1) >= df['ema50'].shift(1))
-
-    # Trend regime confirmation from longer EMAs
+    # Regime filter — long-term trend
     trend_up   = df['ema200'] > df['ema500']
     trend_down = df['ema200'] < df['ema500']
 
-    # RSI confirmation
+    # Primary signal — MACD line crosses signal line
+    macd_cross_up   = (df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))
+    macd_cross_down = (df['macd'] < df['macd_signal']) & (df['macd'].shift(1) >= df['macd_signal'].shift(1))
+
+    # Confirmation 1 — RSI not in opposite extreme
     rsi_ok_long  = df['rsi'] < rsi_ob
     rsi_ok_short = df['rsi'] > rsi_os
 
-    # MACD confirmation
-    macd_ok_long  = df['macd_hist'] > macd_thresh
-    macd_ok_short = df['macd_hist'] < -macd_thresh
+    # Confirmation 2 — price on correct side of Bollinger mid
+    bb_ok_long  = df['Close'] < df['bb_mid']
+    bb_ok_short = df['Close'] > df['bb_mid']
 
-    # Entry: EMA crossover in the right regime + 1 of 2 confirmations
-    long_cond  = ema_cross_up   & trend_up   & (rsi_ok_long  | macd_ok_long)
-    short_cond = ema_cross_down & trend_down & (rsi_ok_short | macd_ok_short)
+    # Entry: MACD crossover + regime + 1 of 2 confirmations
+    long_cond  = macd_cross_up   & trend_up   & (rsi_ok_long  | bb_ok_long)
+    short_cond = macd_cross_down & trend_down & (rsi_ok_short | bb_ok_short)
 
     df['signal'] = 0
     df.loc[long_cond,  'signal'] =  1
@@ -32,22 +32,40 @@ def generate_signals(df, rsi_ob=60, rsi_os=40, macd_thresh=0):
     return df
 
 def run_backtest(df, atr_mult=3.0, take_profit_mult=2.0, risk_pct=0.01, fee=0.00125, cooldown=10):
-    capital     = 10_000.0
-    equity      = capital
-    position    = 0
-    entry_price = 0.0
-    stop_loss   = 0.0
-    take_profit = 0.0
-    units       = 0.0
+    capital        = 10_000.0
+    equity         = capital
+    position       = 0
+    entry_price    = 0.0
+    stop_loss      = 0.0
+    take_profit    = 0.0
+    units          = 0.0
     cooldown_count = 0
 
     equity_curve = []
     trades       = []
 
-    for i, row in df.iterrows():
+    for i in range(len(df)):
+        row    = df.iloc[i]
         price  = row['Close']
         signal = row['signal']
         atr    = row['atr']
+
+        # Close position on data gap > 60 minutes
+        if i > 0:
+            time_diff = (row['Datetime'] - df.iloc[i-1]['Datetime']).total_seconds() / 60
+            if time_diff > 60 and position != 0:
+                if position == 1:
+                    pnl    = (price - entry_price) * units
+                    cost   = price * units * fee
+                    equity += pnl - cost
+                    trades.append({'pnl': pnl - cost, 'exit': price, 'type': 'long'})
+                elif position == -1:
+                    pnl    = (entry_price - price) * units
+                    cost   = price * units * fee
+                    equity += pnl - cost
+                    trades.append({'pnl': pnl - cost, 'exit': price, 'type': 'short'})
+                position       = 0
+                cooldown_count = 0
 
         if cooldown_count > 0:
             cooldown_count -= 1
@@ -71,14 +89,14 @@ def run_backtest(df, atr_mult=3.0, take_profit_mult=2.0, risk_pct=0.01, fee=0.00
                 position       = 0
                 cooldown_count = cooldown
 
-        # Enter only if flat, signal present, and not in cooldown
+        # Enter new position
         if position == 0 and signal != 0 and cooldown_count == 0:
             stop_dist = atr * atr_mult
             if stop_dist > 0:
-                units = (equity * risk_pct) / stop_dist
+                units     = (equity * risk_pct) / stop_dist
                 max_units = (equity * 0.95) / price
-                units = min(units, max_units)
-                cost = price * units * fee
+                units     = min(units, max_units)
+                cost      = price * units * fee
 
                 if signal == 1:
                     entry_price = price
