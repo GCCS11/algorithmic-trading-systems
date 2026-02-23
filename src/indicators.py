@@ -43,15 +43,18 @@ def compute_bollinger(series, period=20, std_dev=2):
 def add_indicators(df):
     df = df.copy()
 
-    df['ema20'] = compute_ema(df['Close'], 20)
-    df['ema50'] = compute_ema(df['Close'], 50)
-    df['rsi']   = compute_rsi(df['Close'])
-    df['atr']   = compute_atr(df)
+    df['ema20']  = compute_ema(df['Close'], 20)
+    df['ema50']  = compute_ema(df['Close'], 50)
+    df['ema200'] = compute_ema(df['Close'], 200)
+    df['ema500'] = compute_ema(df['Close'], 500)
+    df['rsi']    = compute_rsi(df['Close'])
+    df['atr']    = compute_atr(df)
 
     df['macd'], df['macd_signal'], df['macd_hist'] = compute_macd(df['Close'])
     df['bb_upper'], df['bb_mid'], df['bb_lower']   = compute_bollinger(df['Close'])
 
-    indicator_cols = ['ema20', 'ema50', 'rsi', 'atr', 'macd', 'macd_signal', 'macd_hist', 'bb_upper', 'bb_mid', 'bb_lower']
+    indicator_cols = ['ema20', 'ema50', 'ema200', 'ema500', 'rsi', 'atr',
+                      'macd', 'macd_signal', 'macd_hist', 'bb_upper', 'bb_mid', 'bb_lower']
     df = df.dropna(subset=indicator_cols).reset_index(drop=True)
 
     return df
