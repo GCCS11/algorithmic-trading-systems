@@ -1,3 +1,5 @@
+
+
 import numpy as np
 import pandas as pd
 import optuna
@@ -31,11 +33,7 @@ class Objective:
 
 
 def walk_forward(df, train_months=1, test_weeks=1, n_trials=150):
-    """
-    Walk-forward optimization.
-    Slides a training window of train_months, tests on next test_weeks,
-    steps forward by test_weeks each iteration.
-    """
+
     results   = []
     all_equity = []
     params_log = []
@@ -60,14 +58,14 @@ def walk_forward(df, train_months=1, test_weeks=1, n_trials=150):
             window_start += pd.DateOffset(weeks=test_weeks)
             continue
 
-        # Optimize on training window
+        # training
         t0    = time.time()
         study = optuna.create_study(direction='maximize')
         study.optimize(Objective(df_train), n_trials=n_trials, n_jobs=-1)
         total_time += time.time() - t0
         best = study.best_params
 
-        # Evaluate on test window with best params
+        # test
         sig    = generate_signals(df_test, rsi_ob=best['rsi_ob'], rsi_os=best['rsi_os'])
         eq, tr = run_backtest(sig,
                               atr_mult=best['atr_mult'],
@@ -82,7 +80,6 @@ def walk_forward(df, train_months=1, test_weeks=1, n_trials=150):
         results.append(m)
         params_log.append(best)
 
-        # Store equity curve scaled to carry-forward capital
         all_equity.append(eq)
 
         print(f"  {m['window_start']} -> {m['window_end']} | "

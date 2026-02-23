@@ -5,23 +5,23 @@ import pandas as pd
 def generate_signals(df, rsi_ob=60, rsi_os=40, macd_thresh=0):
     df = df.copy()
 
-    # Regime filter — long-term trend
+    # lon term
     trend_up   = df['ema200'] > df['ema500']
     trend_down = df['ema200'] < df['ema500']
 
-    # Primary signal — MACD line crosses signal line
+    # macd
     macd_cross_up   = (df['macd'] > df['macd_signal']) & (df['macd'].shift(1) <= df['macd_signal'].shift(1))
     macd_cross_down = (df['macd'] < df['macd_signal']) & (df['macd'].shift(1) >= df['macd_signal'].shift(1))
 
-    # Confirmation 1 — RSI not in opposite extreme
+    # rsi
     rsi_ok_long  = df['rsi'] < rsi_ob
     rsi_ok_short = df['rsi'] > rsi_os
 
-    # Confirmation 2 — price on correct side of Bollinger mid
+    # bollinger
     bb_ok_long  = df['Close'] < df['bb_mid']
     bb_ok_short = df['Close'] > df['bb_mid']
 
-    # Entry: MACD crossover + regime + 1 of 2 confirmations
+    # entry macd
     long_cond  = macd_cross_up   & trend_up   & (rsi_ok_long  | bb_ok_long)
     short_cond = macd_cross_down & trend_down & (rsi_ok_short | bb_ok_short)
 
@@ -50,7 +50,7 @@ def run_backtest(df, atr_mult=3.0, take_profit_mult=2.0, risk_pct=0.01, fee=0.00
         signal = row['signal']
         atr    = row['atr']
 
-        # Close position on data gap > 60 minutes
+        # close position
         if i > 0:
             time_diff = (row['Datetime'] - df.iloc[i-1]['Datetime']).total_seconds() / 60
             if time_diff > 60 and position != 0:
@@ -70,7 +70,7 @@ def run_backtest(df, atr_mult=3.0, take_profit_mult=2.0, risk_pct=0.01, fee=0.00
         if cooldown_count > 0:
             cooldown_count -= 1
 
-        # Check exit conditions
+        # exits
         if position == 1:
             if price <= stop_loss or price >= take_profit or signal == -1:
                 pnl    = (price - entry_price) * units
@@ -89,7 +89,7 @@ def run_backtest(df, atr_mult=3.0, take_profit_mult=2.0, risk_pct=0.01, fee=0.00
                 position       = 0
                 cooldown_count = cooldown
 
-        # Enter new position
+        # new position
         if position == 0 and signal != 0 and cooldown_count == 0:
             stop_dist = atr * atr_mult
             if stop_dist > 0:
